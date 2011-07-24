@@ -1,0 +1,140 @@
+/* --------------------------------------------------------------
+
+   grid.css
+   * Sets up an easy-to-use grid of 24 columns.
+
+   By default, the grid is 950px wide, with 24 columns
+   spanning 30px, and a 10px margin between columns.
+
+   If you need fewer or more columns, namespaces or semantic
+   element names, use the compressor script (lib/compress.rb)
+
+-------------------------------------------------------------- */
+
+/* A container should group all your columns. */
+.container {
+  width: [PAGE_WIDTH]px;
+  margin: 0 auto;
+}
+
+/* Use this class on any .span / container to see the grid. */
+.showgrid {
+  background: url(grid.png);
+}
+
+
+/* Columns
+-------------------------------------------------------------- */
+
+/* Sets up basic grid floating and margin. */
+.column, [DIV_SPAN_SELECTORS] {
+  float: left;
+  margin-right: [GUTTER_WIDTH]px;
+}
+
+/* The last column in a row needs this class. */
+.last { margin-right: 0; }
+
+/* Use these classes to set the width of a column. */
+[SPAN_WIDTHS]
+
+/* Use these classes to set the width of an input. */
+[INPUT_SELECTORS] {
+  border-left-width: 1px;
+  border-right-width: 1px;
+  padding-left: 5px;
+  padding-right: 5px;
+}
+
+[INPUTS]
+
+/* Add these to a column to append empty cols. */
+
+[APPENDS]
+
+/* Add these to a column to prepend empty cols. */
+
+[PREPENDS]
+
+
+/* Border on right hand side of a column. */
+.border {
+  padding-right: [BORDER_PADDING]px;
+  margin-right: [BORDER_MARGIN]px;
+  border-right: 1px solid #ddd;
+}
+
+/* Border with more whitespace, spans one column. */
+div.colborder {
+  padding-right: [COLBORDER_PADDING]px;
+  margin-right: [COLBORDER_MARGIN]px;
+  border-right: 1px solid #eee;
+}
+
+
+/* Use these classes on an element to push it into the
+next column, or to pull it into the previous column.  */
+
+[PULLS]
+
+[PULL_SELECTORS] {float: left; position:relative;}
+
+[PUSHS]
+
+[PUSH_SELECTORS] {float: left; position:relative;}
+
+
+/* Misc classes and elements
+-------------------------------------------------------------- */
+
+/* In case you need to add a gutter above/below an element */
+div.prepend-top, .prepend-top {
+	margin-top:1.5em;
+}
+div.append-bottom, .append-bottom {
+	margin-bottom:1.5em;
+}
+
+/* Use a .box to create a padded box inside a column.  */
+.box {
+  padding: 1.5em;
+  margin-bottom: 1.5em;
+  background: #e5eCf9;
+}
+
+/* Use this to create a horizontal ruler across a column. */
+hr {
+  background: #ddd;
+  color: #ddd;
+  clear: both;
+  float: none;
+  width: 100%;
+  height: 1px;
+  margin: 0 0 [HR_MARGIN]em;
+  border: none;
+}
+hr.space {
+  background: #fff;
+  color: #fff;
+  visibility: hidden;
+}
+
+
+/* Clearing floats without extra markup
+   Based on How To Clear Floats Without Structural Markup by PiE
+   [http://www.positioniseverything.net/easyclearing.html] */
+
+.clearfix:after, .container:after {
+  content: "\0020";
+  display: block;
+  height: 0;
+  clear: both;
+  visibility: hidden;
+  overflow:hidden;
+}
+.clearfix, .container {display: block;}
+
+/* Regular clearing
+   apply to column that should drop below previous ones. */
+
+.clear { clear:both; }

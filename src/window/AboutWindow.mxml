@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:Window xmlns:mx="http://www.adobe.com/2006/mxml" title="About"
+	showStatusBar="false" type="utility" creationComplete="onCC()" resizable="false" maximizable="false"
+	layout="vertical" width="350" height="418" backgroundImage="@Embed(source='assets/about.png')">
+	<mx:Script>
+		<![CDATA[
+			import flash.net.navigateToURL;
+			import net.tw.util.air.App;
+			protected function onCC():void {
+				close();
+				title=App.getName()+' - '+title;
+				lblVersion.htmlText=App.getVersion()+' - <a href="http://toki-woki.net">TOKI WOKI.</a> - <a href="http://toki-woki.net/p/Boks/"><u>Send feedback</u></a> - <a href="http://toki-woki.net/donation.html"><u>Donate!</u></a>';
+			}
+		]]>
+	</mx:Script>
+	<mx:Canvas width="100%" height="100%">
+		<mx:Label y="388" text="Version" styleName="subTitle"
+			horizontalCenter="0" textAlign="center"
+			id="lblVersion"/>
+	</mx:Canvas>
+</mx:Window>

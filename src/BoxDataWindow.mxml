@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:HBox xmlns:mx="http://www.adobe.com/2006/mxml"
+	creationComplete="onCC()" enabled="false"
+	paddingBottom="10" paddingLeft="10" paddingRight="10" paddingTop="10"
+	borderSides="top" borderColor="#aaaaaa" borderStyle="solid" borderThickness="1" backgroundColor="#eeeeee">
+	<mx:Script><![CDATA[
+		protected var box:GridBox;
+		protected function onCC():void {
+			minHeight=height;
+		}
+		protected function avoidClose(e:Event):void {
+			e.preventDefault();
+		}
+		public function setBox(b:GridBox):void {
+			if (!b) {
+				enabled=false;
+				box=null;
+				return;
+			}
+			enabled=true;
+			box=b;
+			//
+			tiID.text=b.domID;
+			taClasses.text=b.cssClasses;
+			tiMore.text=b.moreClasses;
+			//
+			var hasChildren:Boolean=b.getBoxes().length>0;
+			cbType.dataProvider=hasChildren ? GridBox.filledBoxesTypes : box.isParentWide() ? GridBox.allBoxesTypes : GridBox.nonParentWideTypes;
+			cbType.selectedItem=b.type;
+			//
+			taHTML.text=box.htmlContent;
+			divBorder.selectedValue=b.border;
+			//
+			updateFeedback();
+		}
+		protected function updateFeedback():void {
+			taClasses.text='CSS classes: '+box.cssClasses;
+			taHTML.enabled=box.acceptsHTMLContent();
+			/*for (var i:uint=0; i<divBorder.numRadioButtons; i++) {
+				divBorder.getRadioButtonAt(i).enabled=box.acceptsBorder();
+			}*/
+			rbNoBorder.enabled=rbBorder.enabled=box.acceptsBorder();
+			rbColBorder.enabled=box.acceptsColBorder();
+		}
+		public function updateBoxData(e:Event=null):void {
+			if (!GridBox.hasSelection()) return;
+			var b:GridBox=GridBox.getSelection();
+			//
+			b.domID=tiID.text;
+			b.moreClasses=tiMore.text;
+			b.type=cbType.selectedItem as String;
+			b.htmlContent=taHTML.text;
+			b.border=divBorder.selectedValue as uint;
+			//
+			updateFeedback();
+		}
+	]]></mx:Script>
+	<mx:Form width="450" height="100%" id="f" paddingBottom="0" paddingLeft="0" paddingRight="0" paddingTop="0">
+		<mx:HBox width="100%">
+			<mx:FormItem label="id" width="100%">
+				<mx:TextInput id="tiID" change="updateBoxData(event)" restrict="0-9A-Za-z\-_" width="100%"/>
+			</mx:FormItem>
+			<mx:FormItem label="Markup type" width="100%">
+				<mx:ComboBox id="cbType" change="updateBoxData(event)" width="100%"/>
+			</mx:FormItem>			
+		</mx:HBox>
+		<mx:HBox width="100%" verticalGap="0" paddingRight="5">
+			<mx:RadioButtonGroup id="divBorder" change="updateBoxData(event)"/>
+			<mx:RadioButton id="rbNoBorder" label="No border" groupName="divBorder" selected="true" value="0"/>
+			<mx:RadioButton id="rbBorder" label="Border" groupName="divBorder" value="1"/>
+			<mx:RadioButton id="rbColBorder" label="Column-wide border" groupName="divBorder" value="2"/>
+		</mx:HBox>
+		<mx:FormItem label="More classes" width="100%">
+			<mx:TextInput width="100%" id="tiMore" restrict=" 0-9A-Za-z\-_" change="updateBoxData(event)"/>
+		</mx:FormItem>
+		<mx:Label width="100%" id="taClasses" />
+	</mx:Form>
+	<mx:VRule height="100%"/>
+	<mx:VBox verticalGap="-1" width="100%" height="100%">
+		<mx:HBox width="100%" verticalAlign="middle">
+			<mx:Label text="HTML content"/>
+			<mx:Spacer width="100%" height="100%"/>
+			<mx:Button label="+Lorem Ipsum" enabled="{taHTML.enabled}" toggle="true" id="lipsumOpener" toolTip="Add dummy text, thanks to lipsum.com"/>
+		</mx:HBox>
+		<mx:TextArea width="100%" height="100%" id="taHTML" change="updateBoxData(event)"/>
+	</mx:VBox>
+</mx:HBox>

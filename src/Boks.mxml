@@ -1,0 +1,840 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:WindowedApplication xmlns:mx="http://www.adobe.com/2006/mxml" layout="absolute"
+	creationComplete="onCC(event)" applicationComplete="onReady(event)" invoke="onAppInvoke(event)"
+	closing="killApp(event)" xmlns:local="*" xmlns:prompt="prompt.*">
+	<mx:Style source="main.css" />
+	<mx:Script>
+		<![CDATA[
+			import flash.net.URLRequest;
+		]]>
+	</mx:Script>
+	<mx:menu>
+		<mx:FlexNativeMenu id="nMenu" labelField="@label"
+			showRoot="false" keyEquivalentField="@keyEquivalent"
+			keyEquivalentModifiersFunction="platformKeyHandler"
+			itemClick="onMenu(event)" />
+	</mx:menu>
+	<mx:XML id="nMenuData" format="e4x">
+	<root>
+		<menuitem label="File">
+			<menuitem label="New" keyEquivalent="n" />
+			<menuitem label="Open..." keyEquivalent="o" />
+			<menuitem type="separator"/>
+			<menuitem label="Save" keyEquivalent="s" />
+			<menuitem label="Save As..." keyEquivalent="s" shiftKey="true" />
+			<menuitem label="Close" keyEquivalent="w" />
+			<menuitem type="separator"/>
+			<menuitem label="Settings..." keyEquivalent="p" shiftKey="true" />
+			<menuitem label="Export..." keyEquivalent="e" />
+			<menuitem type="separator"/>
+			<menuitem label="Exit" keyEquivalent="q" />
+		</menuitem>
+		<menuitem label="Edit">
+			<menuitem label="Undo" keyEquivalent="z" enabled='false' />
+			<menuitem label="Redo" keyEquivalent="y" enabled='false' />
+		</menuitem>
+		<menuitem label="Window">
+			<menuitem label="Live Preview" keyEquivalent="l" />
+			<menuitem label="Split View" keyEquivalent="i" />
+		</menuitem>
+		<menuitem label="Help">
+			<menuitem label="Online Help" />
+			<menuitem label="About..." />
+		</menuitem>
+	</root>
+	</mx:XML>
+	<mx:Script>
+		<![CDATA[
+			import window.AboutWindow;
+			import window.PreviewWindow;
+			import window.SettingsWindow;
+			import com.almirun.common.events.LoremIpsumEvent;
+			import flash.net.navigateToURL;
+			import air.update.events.UpdateEvent;
+			import air.update.ApplicationUpdaterUI;
+			import flash.utils.setInterval;
+			import com.adobe.air.filesystem.VolumeMonitor;
+			import mx.events.FlexEvent;
+			import mx.events.CloseEvent;
+			import mx.controls.Alert;
+			import mx.utils.ObjectUtil;
+			import mx.events.FlexNativeMenuEvent;
+			import com.adobe.serialization.json.JSON;
+			import mx.collections.ArrayCollection;
+			import mx.events.AIREvent;
+			//
+			import org.alivepdf.layout.Layout;
+			import org.alivepdf.display.Display;
+			import org.alivepdf.layout.Size;
+			import org.alivepdf.pages.Page;
+			import org.alivepdf.colors.RGBColor;
+			import org.alivepdf.saving.Method;
+			import org.alivepdf.layout.Unit;
+			import org.alivepdf.layout.Orientation;
+			import org.alivepdf.pdf.PDF;
+			//
+			import mx.graphics.codec.PNGEncoder;
+			import asgard.net.HTMLEntities;
+			import net.tw.util.air.App;
+			//
+			protected var rootGrid:RootGridBox;
+			public var boxHeight:uint=18;
+			protected var sw:SettingsWindow;
+			protected var pw:PreviewWindow;
+			protected var fs:FileStream;
+			protected var aw:AboutWindow;
+			//
+			protected var outputDirectory:File;
+			protected var tempOutputDirectory:File;
+			protected var dataPath:File;
+			protected var bpSourcePath:File;
+			protected var pluginPath:File;
+			//
+			protected var fFilters:Array;
+			protected var savePathSelected:Boolean=false;
+			public var saveAsPath:File;
+			public var openFile:File;
+			//
+			public var importing:Boolean=false;
+			protected var lastOpenBokValue:Object;
+			protected var lastChangedFileEvent:Event;
+			//
+			protected var bokObjectHistory:Array;
+			protected var currentHistoryIndex:int;
+			//
+			protected var exitAfterSave:Boolean=false;
+			//
+			protected function onCC(e:Event):void {
+				nMenu.dataProvider=nMenuData;
+			}
+			public function onReady(e:Event):void {
+				//App.centerWindow(nativeWindow);
+				fFilters=[new FileFilter("Boks files", "*.bok")];
+				status="Quick help: Click and drag to draw. Left or right arrow to move. Shift+left or right arrow to move left edge. Alt+left or right arrow to move right edge. Backspace to delete.";
+				//
+				saveAsPath=new File();
+				saveAsPath.addEventListener(Event.SELECT, onSaveAsPathSelected);
+				openFile=new File();
+				openFile.addEventListener(Event.SELECT, onOpenPathSelected);
+				//
+				//nativeWindow.addEventListener(Event.ACTIVATE, moveUtilitiesUp);
+				//
+				outputDirectory=new File();
+				outputDirectory.addEventListener(Event.SELECT, onOutputChosen);
+				//
+				fs=new FileStream();
+				//
+				dataPath=File.applicationDirectory.resolvePath('data');
+				tempOutputDirectory=File.applicationStorageDirectory.resolvePath('preview');
+				bpSourcePath=dataPath.resolvePath('blueprint-src');
+				pluginPath=bpSourcePath.resolvePath('plugins');
+				//
+				rootGrid=new RootGridBox(this);
+				rootGrid.addEventListener(GridEvent.ROOT_CHILD_CHANGE, updateMinCol);
+				rootGrid.setStyle('top', 100);
+				rootGrid.setStyle('horizontalCenter', 0);
+				rootHolder.addChild(rootGrid);
+				//
+				GridBox.selectionWatcher.addEventListener(GridEvent.SELECT, updateSelectionData);
+				GridBox.selectionWatcher.addEventListener(GridEvent.UNSELECT, updateSelectionData);
+				GridBox.selectionWatcher.addEventListener(GridEvent.MOVE, updateSelectionData);
+				GridBox.selectionWatcher.addEventListener(GridEvent.RESIZE, updateSelectionData);
+				//
+				sw=new SettingsWindow();
+				sw.app=this;
+				sw.addEventListener(Event.CHANGE, onGridConfigChange);
+				sw.addEventListener('exportNeeded', export);
+				sw.addEventListener(AIREvent.WINDOW_ACTIVATE, updateMinimumColNum);
+				//sw.visible=false;
+				sw.open();
+				//App.centerWindow(sw);
+				//App.preventClose(sw.nativeWindow, nativeWindow);
+				App.minimizeOnClose(sw.nativeWindow);
+				//
+				aw=new AboutWindow();
+				aw.open();
+				//aw.visible=false;
+				//App.centerWindow(aw);
+				App.preventClose(aw.nativeWindow/*, nativeWindow*/);
+				//App.minimizeOnClose(aw.nativeWindow);
+				//
+				pw=new PreviewWindow();
+				pw.app=this;
+				//pw.visible=false;
+				pw.open();
+				//App.centerWindow(pw);
+				//pw.width=nativeWindow.width;
+				pw.addEventListener(FlexEvent.SHOW, updateLivePreview);
+				pw.addEventListener(FlexEvent.HIDE, onLivePreviewHide);
+				//App.preventClose(pw.nativeWindow, nativeWindow);
+				App.minimizeOnClose(pw.nativeWindow);
+				//pw.addEventListener(AIREvent.WINDOW_ACTIVATE, updateLivePreview);
+				setInterval(updateLivePreview, 2000);
+				//
+				lblPageGrid.doubleClickEnabled=lblPageTitle.doubleClickEnabled=true;
+				lblPageTitle.addEventListener(MouseEvent.DOUBLE_CLICK, openSettings);
+				lblPageGrid.addEventListener(MouseEvent.DOUBLE_CLICK, openSettings);
+				//
+				newBok();
+				//
+				lipsumBubble.lig.addEventListener(LoremIpsumEvent.DATA_LOADED, addLipsum);
+				//
+				// Gestion de l'auto-update
+				var appUpdater:ApplicationUpdaterUI=new ApplicationUpdaterUI();
+				appUpdater.updateURL='http://toki-woki.net/p/Boks/version.xml';
+				appUpdater.isCheckForUpdateVisible=false;
+				appUpdater.addEventListener(UpdateEvent.INITIALIZED, function(e:UpdateEvent):void {
+					appUpdater.checkNow();
+				});
+				appUpdater.initialize();
+			}
+			protected function platformKeyHandler(item:Object):Array {
+				var res:Array=[];
+				if (item['@shiftKey']!=null && item['@shiftKey']==true) res.push(Keyboard.SHIFT);
+				if (App.runningOnMac()) res.push(Keyboard.COMMAND);
+				else res.push(Keyboard.CONTROL);
+				return res;
+			}
+			protected var _invokeEventFile:File;
+			protected function onAppInvoke(e:InvokeEvent):void {
+				if (e.reason==InvokeEventReason.STANDARD && e.arguments.length==1) {
+					nativeWindow.activate();
+					// Ouverture d'un fichier ou alerte
+					if (openFileHasChanged()) {
+						Alert.show("Save or close your file before opening an other!", "Warning");
+					} else {
+						_invokeEventFile=new File(e.arguments[0]);
+						sw.addEventListener('nowAcceptsFiles', onSettingsWindowAcceptsFiles);
+					}
+				}
+			}
+			protected function onSettingsWindowAcceptsFiles(e:Event):void {
+				sw.removeEventListener('nowAcceptsFiles', onSettingsWindowAcceptsFiles);
+				open(_invokeEventFile);
+				_invokeEventFile=null;
+			}
+			protected function getNewBokNativePath():String {
+				return File.applicationDirectory.resolvePath('data').resolvePath('blank.bok').nativePath;
+			}
+			protected function newBok():void {
+				// Pour avoir un nouveau fichier, on charge un modèle vide
+				open(new File(getNewBokNativePath()), true);
+			}
+			protected function open(f:File, isNewFile:Boolean=false):void {
+				openFile.nativePath=f.nativePath;
+				onOpenPathSelected();
+				if (isNewFile) {
+					savePathSelected=false;
+				}
+			}
+			protected function openFileHasChanged():Boolean {
+				var a:Object=lastOpenBokValue;
+				var b:Object=getJSONExportObject();
+				return ObjectUtil.compare(a, b)!=0;
+			}
+			protected function onFileChangeAlertClose(e:CloseEvent):void {
+				// C'est soit une action du menu, soit la fermeture de l'appli
+				var lastEventIsMenu:Boolean=lastChangedFileEvent is FlexNativeMenuEvent;
+				var ev:FlexNativeMenuEvent;
+				switch(e.detail) {
+					case Alert.OK:
+						if (lastEventIsMenu) {
+							ev=lastChangedFileEvent as FlexNativeMenuEvent;
+							var oldLabel:String=ev.label;
+							// On fait l'équivalent d'un Save
+							ev.label="Save";
+							onMenu(ev, true);
+							// Puis on fait ce que la personne a demandé...
+							ev.label=oldLabel;
+							onMenu(ev, true);
+						} else {
+							// On fait l'équivalent d'un Save
+							ev=new FlexNativeMenuEvent(FlexNativeMenuEvent.ITEM_CLICK);
+							ev.label="Save";
+							// Un fois l'enregistrement fait, on quitte
+							exitAfterSave=true;
+							// Sauf si on annule
+							saveAsPath.addEventListener(Event.CANCEL, function(e:Event):void {
+								exitAfterSave=false;
+							});
+							onMenu(ev, true);
+						}
+						break;
+					case Alert.NO:
+						if (lastEventIsMenu) onMenu(lastChangedFileEvent as FlexNativeMenuEvent, true);
+						else application.exit();
+						break;
+				}
+			}
+			protected function beforeChangedFileAction():void {
+				nativeWindow.activate();
+				Alert.show(savePathSelected ? "Save changes to "+openFile.name+"?" : "Save changes?", "Warning", Alert.OK | Alert.NO | Alert.CANCEL, this, onFileChangeAlertClose);
+			}
+			protected function onMenu(e:FlexNativeMenuEvent, ignoreFileChange:Boolean=false):void {
+				var l:String=e.label;
+				// Gestion du Undo/Redo
+				if (l.indexOf('Undo')==0) {
+					handleUndo();
+					return;
+				} else if (l.indexOf('Redo')==0) {
+					handleRedo();
+					return;
+				} else if (l.indexOf('Clear History')==0) {
+					clearHistory();
+					return;
+				}
+				//
+				if (!ignoreFileChange && (l=="New" || l=="Close" || l=="Open...") && openFileHasChanged()) {
+					lastChangedFileEvent=e;
+					beforeChangedFileAction();
+					return;
+				}
+				// Si le fichier ouvert est celui par défaut, on cible le bureau
+				if ((l=="Save" || l=="Save As..." || l=="Open...") && !savePathSelected) {
+					saveAsPath.nativePath=openFile.nativePath=File.desktopDirectory.nativePath;
+				}
+				switch (l) {
+					case "New":
+					case "Close":
+						newBok();
+						break;
+					case "Open...":
+						openFile.browseForOpen(e.label, fFilters);
+						break;
+					case "Save As...":
+						saveAsPath.browseForSave(e.label);
+						break;
+					case "Save":
+						if (!savePathSelected) saveAsPath.browseForSave(e.label);
+						else save();
+						break;
+					case "Settings...":
+						openSettings();
+						break;
+					case "Export...":
+						browseForExport();
+						break;
+					case "Exit":
+						killApp();
+						break;
+					case "Live Preview":
+						pw.width=nativeWindow.width;
+						pw.activate();
+						break;
+					case "Split View":
+						pw.activate();
+						nativeWindow.y=0;
+						var halfHeight:Number=Screen.mainScreen.bounds.height/2;
+						pw.nativeWindow.height=nativeWindow.height=halfHeight;
+						pw.nativeWindow.x=nativeWindow.x;
+						pw.nativeWindow.y=halfHeight;
+						pw.nativeWindow.width=nativeWindow.width;
+						break;
+					case "Online Help":
+						navigateToURL(new URLRequest("http://toki-woki.net/p/Boks/help.html"));
+						break;
+					case "About...":
+						aw.activate();
+						break;
+					default :
+						Alert.show("Menu item not implemented", "Ouch");
+						break;
+				}
+			}
+			protected function onLivePreviewHide(e:FlexEvent):void {
+				// On décoche...
+				nMenuData.menuitem[2].menuitem[0].@toggled=false;
+			}
+			public function updateLivePreview(e:Event=null, force:Boolean=false):void {
+				force=force || (e && e.type==FlexEvent.SHOW);
+				if (!force && !pw.wantAutoRefresh()) return;
+				var previewFile:File=export(null, true);
+				var previewPath:String=previewFile.nativePath;
+				if (App.runningOnLinux() || App.runningOnMac()) previewPath = "file://"+previewPath;
+				pw.storeLocation(previewPath);
+				pw.refresh();
+			}
+			protected function getBokContents(f:File):Object {
+				fs.open(f, FileMode.READ);
+				var jsonStr:String=fs.readUTFBytes(fs.bytesAvailable);
+				fs.close();
+				return JSON.decode(jsonStr);
+			}
+			protected function onOpenPathSelected(e:Event=null):void {
+				var json:Object=getBokContents(openFile);
+				updateFromObject(json);
+				//
+				saveAsPath.nativePath=openFile.nativePath;
+				savePathSelected=true;
+				//
+				lastOpenBokValue=getJSONExportObject();
+				clearHistory();
+				updateLivePreview(null, true);
+			}
+			protected function updateFromObject(o:Object):void {
+				importing=true;
+				sw.updateFromObject(o.settings);
+				rootGrid.buildFromObject(o.boxes, this);
+				onGridConfigChange();
+				importing=false;
+			}
+			protected function onSaveAsPathSelected(e:Event):void {
+				savePathSelected=true;
+				save();
+			}
+			protected function save():void {
+				if (saveAsPath.extension!='bok') saveAsPath.nativePath=saveAsPath.nativePath+'.bok';
+				lastOpenBokValue=getJSONExportObject();
+				fs.open(saveAsPath, FileMode.WRITE);
+				fs.writeUTFBytes(JSON.encode(lastOpenBokValue));
+				fs.close();
+				if (exitAfterSave) application.exit();
+			}
+			protected function getJSONExportObject():Object {
+				var o:Object={};
+				o.settings=sw.exportAsObject();
+				o.boxes=rootGrid.exportAsObject();
+				o.meta={};
+				o.meta.editor=App.getName();
+				o.meta.editorVersion=App.getVersion();
+				return o;
+			}
+			protected function updateMinimumColNum(e:AIREvent):void {
+				sw.nsCol.minimum=rootGrid.getMinimumColNum();
+			}
+			/*protected function moveUtilitiesUp(e:Event):void {
+				if (pw.visible) pw.orderToFront();
+				if (sw.visible) sw.orderToFront();
+			}*/
+			protected function killApp(e:Event=null):void {
+				if (e) e.preventDefault();
+				if (openFileHasChanged()) {
+					lastChangedFileEvent=e;
+					beforeChangedFileAction();
+					return;
+				}
+				application.exit();
+			}
+			protected function updateMinCol(e:GridEvent):void {
+				sw.nsCol.minimum=e.data;
+			}
+			protected function onGridConfigChange(e:Event=null):void {
+				if (!colWidth) return;
+				updateGrid();
+				lblPageTitle.text=sw.tiTitle.text;
+				lblPageGrid.text=numCol+" columns — "+colWidth+"px + "+gutterWidth+"px gutter — Width: "+rootGrid.width+"px";
+			}
+			protected function updateSelectionData(e:Event=null):void {
+				bdw.setBox(GridBox.getSelection());
+			}
+			protected function updateGrid():void {
+				if (!rootGrid || colGut==0) return;
+				rootGrid.updateGrid();
+				dispatchEvent(new GridEvent(GridEvent.LAYOUT_CHANGE));
+				storeHistoryStep(this, "Change Grid Settings");
+			}
+			public function get gutterWidth():uint {
+				if (!sw) return 0;
+				return sw.gutterWidth;
+			}
+			public function get colGut():uint {
+				return colWidth+gutterWidth;
+			}
+			public function get colWidth():uint {
+				if (!sw) return 0;
+				return sw.colWidth;
+			}
+			public function get lineHeight():uint {
+				// Soit la valeur selectionnée, soit 18 (le défaut de Blueprint)
+				return sw.cbBaseline.selected ? sw.nsBaseLineHeight.value : 18;
+			}
+			public function get numCol():uint {
+				return sw.numCol;
+			}
+			public function get showBaseline():Boolean {
+				return sw.cbShowBL.selected;
+			}
+			public function get commentClosure():Boolean {
+				return sw.cbCommentClosure.selected;
+			}
+			public function compressCSS(s:String):String {
+				if (!sw.cbCompress.selected) return s;
+				// core_ext.rb - ligne 7
+				return s.replace(/:\s*/gm, ':').replace(/\n/gm, '').replace(/\s+/gm, ' ').replace(/(\/\*).*?(\*\/)/gm, '')
+			}
+			public function getCSSContent(f:File):String {
+				if (!f.exists) {
+					trace(f.nativePath, 'error');
+					return '';
+				}
+				fs.open(f, FileMode.READ);
+				var s:String=fs.readUTFBytes(fs.bytesAvailable);
+				fs.close();
+				return compressCSS(s);
+			}
+			protected function openSettings(e:Event=null):void {
+				sw.activate();
+				if (e) {
+					// Soyons chic...
+					if (lblPageTitle.contains(e.target as DisplayObject)) {
+						//sw.tabs.selectedIndex=3;
+						sw.tabs.selectedChild=sw.exportTab;
+						sw.focusManager.setFocus(sw.tiTitle);
+					} else if (lblPageGrid.contains(e.target as DisplayObject)) {
+						//sw.tabs.selectedIndex=0;
+						sw.tabs.selectedChild=sw.gridTab;
+					}
+				}
+			}
+			protected function browseForExport():void {
+				outputDirectory.browseForDirectory("Choose the ouput directory");
+			}
+			protected function onOutputChosen(e:Event):void {
+				export();
+			}
+			protected function export(e:Event=null, isTempExport:Boolean=false):File {
+				var i:uint, j:uint;
+				var curOutputDir:File=isTempExport ? tempOutputDirectory : outputDirectory;
+				//
+				// - La page HTML
+				//
+				rootGrid.showGrid=sw.cbGrid.selected;
+				//
+				fs.open(dataPath.resolvePath('page-template.html'), FileMode.READ);
+				var html:String=fs.readUTFBytes(fs.bytesAvailable);
+				fs.close();
+				var body:String=HTMLEntities.decode(rootGrid.getHTML().toXMLString());
+				html=html.replace('[BODY]', body);
+				html=html.replace('[APP_VERSION]', App.getName()+' - '+App.getVersion());
+				html=html.replace('[TITLE]', sw.tiTitle.text);
+				//
+				var doctype:String='';
+				switch(sw.comboDoctype.selectedIndex) {
+					case 0:doctype='<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">';break;
+					case 1:doctype='<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">';break;
+					case 2:doctype='<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">';break;
+					case 3:doctype='<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">';break;
+					case 4:doctype='<!DOCTYPE html>';break;
+				}
+				var pageLang:String=sw.tiLang.text;
+				var headTag:String=sw.comboDoctype.selectedIndex<2 ? '<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="'+pageLang+'" lang="'+pageLang+'">' : '<html lang="'+pageLang+'">';
+				html=html.replace('[DOCTYPE_HTML]', doctype+'\n'+headTag);
+				//
+				var dtLT:String=sw.comboDoctype.selectedIndex<2 ? '/>' : '>';
+				html=html.replace(/\[DT_LT\]/gm, dtLT);
+				//
+				// Le repertoire qui va contenir les CSSs
+				var cssDir:File=curOutputDir.resolvePath('css');
+				if (cssDir.exists) cssDir.deleteDirectory(true);
+				// Les JSs
+				var jsDir:File=curOutputDir.resolvePath('js');
+				if (jsDir.exists) jsDir.deleteDirectory(true);
+				//
+				// - Construction du screen.css
+				//
+				fs.open(dataPath.resolvePath('grid-template.css'), FileMode.READ);
+				var gridCSS:String=fs.readUTFBytes(fs.bytesAvailable);
+				fs.close();
+				//
+				// Gestion du remplacement des balises
+				//
+				var divSpanSelectors:Array=[];
+				var spanWidths:Array=[];
+				var appends:Array=[];
+				var prepends:Array=[];
+				var pulls:Array=[];
+				var pushs:Array=[];
+				var pullSelectors:Array=[];
+				var pushSelectors:Array=[];
+				var inputSelectors:Array=[];
+				var inputs:Array=[];
+				for (i=0; i<numCol; i++) {
+					j=i+1;
+					var spanWidth:uint=(j*colGut)-gutterWidth;
+					divSpanSelectors.push('.span-'+j);
+					spanWidths.push('.span-'+j+'  {width: '+spanWidth+'px;}');
+					pulls.push('.pull-'+j+' { margin-left: -'+(spanWidth+gutterWidth)+'px; }');
+					pushs.push('.push-'+j+' { margin: 0 -'+(spanWidth+gutterWidth)+'px 1.5em '+(spanWidth+gutterWidth)+'px; }');
+					inputs.push('input.span-'+j+', textarea.span-'+j+' { width: '+(spanWidth-12)+'px; }');
+					pullSelectors.push('.pull-'+j);
+					pushSelectors.push('.push-'+j);
+					inputSelectors.push('input.span-'+j+', textarea.span-'+j);
+					if (j<numCol) {
+						appends.push('.append-'+j+'  { padding-right: '+(spanWidth+gutterWidth)+'px; } ');
+						prepends.push('.prepend-'+j+'  { padding-left: '+(spanWidth+gutterWidth)+'px; } ');
+					}
+				}
+				gridCSS=gridCSS.replace("[PAGE_WIDTH]", sw.pageWidth);
+				gridCSS=gridCSS.replace("[GUTTER_WIDTH]", gutterWidth);
+				gridCSS=gridCSS.replace("[DIV_SPAN_SELECTORS]", divSpanSelectors.join(', '));
+				gridCSS=gridCSS.replace("[SPAN_WIDTHS]", spanWidths.join('\n'));
+				gridCSS=gridCSS.replace("[APPENDS]", appends.join('\n'));
+				gridCSS=gridCSS.replace("[PREPENDS]", prepends.join('\n'));
+				gridCSS=gridCSS.replace("[PULLS]", pulls.join('\n'));
+				gridCSS=gridCSS.replace("[PUSHS]", pushs.join('\n'));
+				gridCSS=gridCSS.replace("[INPUTS]", inputs.join('\n'));
+				gridCSS=gridCSS.replace("[PULL_SELECTORS]", pullSelectors.join(', '));
+				gridCSS=gridCSS.replace("[PUSH_SELECTORS]", pushSelectors.join(', '));
+				gridCSS=gridCSS.replace("[INPUT_SELECTORS]", inputSelectors.join(', '));
+				//
+				// Les bordures
+				var gw2:Number=gutterWidth/2;
+				var cgw2:Number=(colWidth+2*gutterWidth)/2;
+				gridCSS=gridCSS.replace("[BORDER_PADDING]", Math.floor(gw2)-1);
+				gridCSS=gridCSS.replace("[BORDER_MARGIN]", Math.ceil(gw2));
+				gridCSS=gridCSS.replace("[COLBORDER_PADDING]", Math.floor(cgw2)-1);
+				gridCSS=gridCSS.replace("[COLBORDER_MARGIN]", Math.ceil(cgw2));
+				gridCSS=gridCSS.replace("[HR_MARGIN]", (sw.nsBaseLineHeight.value/sw.nsBaseFontSize.value)-0.1);
+				//
+				// reset.css
+				var screenCSS:String=getCSSContent(bpSourcePath.resolvePath('reset.css'));
+				// typography.css
+				//screenCSS+=getCSSContent(bpSourcePath.resolvePath('typography.css'));
+				fs.open(dataPath.resolvePath('typography-template.css'), FileMode.READ);
+				var typoCSS:String=fs.readUTFBytes(fs.bytesAvailable);
+				fs.close();
+				//typoCSS=typoCSS.replace('[EM_MARGIN]', sw.nsBaseLineHeight.value/sw.nsBaseFontSize.value);
+				typoCSS=typoCSS.split('[EM_MARGIN]').join(sw.nsBaseLineHeight.value/sw.nsBaseFontSize.value);
+				screenCSS+=compressCSS(typoCSS);
+				// Gestion du grid.css un peu différente
+				screenCSS+=compressCSS(gridCSS);
+				// forms.css
+				screenCSS+=getCSSContent(bpSourcePath.resolvePath('forms.css'));
+				//
+				// Gestion de la baseline
+				var baselineCSS:String='';
+				if (sw.cbBaseline.selected) {
+					baselineCSS='\n/* Baseline rhythm */\n\n'
+					baselineCSS+='body { font-size: '+sw.nsBaseFontSize.value+'px; line-height: '+(sw.nsBaseLineHeight.value/sw.nsBaseFontSize.value)+'em; }\n';
+					// On attribue des valeurs par défaut à certaines balises
+					//var defSpace:Number=sw.nsBaseLineHeight.value/sw.nsBaseFontSize.value;
+					//baselineCSS+='h1, h2, h3, h4, h5, h6, p, blockquote {font-size:1em; line-height:'+defSpace+'em; margin-bottom:'+defSpace+'em}\n';
+					// Les selécteurs ajoutés
+					var selectors:ArrayCollection=sw.baselineSelectors;
+					for (i=0; i<selectors.length; i++) {
+						var sel:Object=selectors[i];
+						baselineCSS+=sel.selector+' { ';
+						var space:Number=sw.nsBaseLineHeight.value/(sw.nsBaseFontSize.value*sel.ratio);
+						/*var mTop:Number=(sel.ratio>=sel.lines) ? 0 : (sel.lines-1)*(space/2);
+						var mBottom:Number=space-mTop;
+						baselineCSS+='font-size: '+sel.ratio+'em; line-height: '+(sel.lines*space)+'em; margin-top: -'+mTop+'em; margin-bottom: '+mBottom+'em;';
+						baselineCSS+=' }\n';*/
+						//
+						baselineCSS+='font-size: '+sel.ratio+'em; line-height: '+(sel.lines*space)+'em; margin-bottom: '+space+'em;';
+						baselineCSS+=' }\n';
+					}
+				}
+				if (sw.cbSpaceTop.selected) {
+					var blh:uint=sw.cbBaseline.selected ? sw.nsBaseLineHeight.value : 18;
+					var topSpace:uint=blh*sw.nsSpaceTop.value;
+					baselineCSS+='.container { padding-top:'+topSpace+'px }\n';
+				}
+				screenCSS+=compressCSS(baselineCSS);
+				//
+				//
+				// On va ajouter print.css et ie.css qui seront éventuellement compressés
+				var toCopy:Array=[];
+				toCopy.push({type:'css', f:bpSourcePath.resolvePath('print.css')});
+				toCopy.push({type:'css', f:bpSourcePath.resolvePath('ie.css')});
+				//
+				// Gestion des fichiers supplémentaires
+				//
+				var cssCalls:Array=[];
+				var cssPrefix:String="<link href='";
+				var cssSuffix:String="' rel='stylesheet' type='text/css'"+dtLT;
+				var copiedCSSs:Array=[];
+				var curFile:File;
+				for (i=0; i<sw.moreCSSs.length; i++) {
+					if (sw.cssIsRemoteAt(i)) {
+						cssCalls.push(cssPrefix+sw.moreCSSs[i].path+cssSuffix);
+					} else {
+						curFile=new File(sw.moreCSSs[i].nativePath);
+						if (!curFile.exists) continue;
+						if (curFile.isDirectory) {
+							curFile.copyToAsync(cssDir.resolvePath(curFile.name), true);
+						} else {
+							if (sw.cbMergeMore.selected) {
+								screenCSS+=getCSSContent(curFile);
+							} else {
+								toCopy.push({type:'css', f:curFile});
+								copiedCSSs.push('<link rel="stylesheet" href="css/'+curFile.name+'" type="text/css" media="screen, projection"'+dtLT);
+							}
+						}
+					}
+				}
+				html=html.replace('[MORE_CSS]', cssCalls.concat(copiedCSSs).join('\n'));
+				//
+				// Le JS pour corriger les baselines
+				//
+				if (sw.cbImageBL.selected) {
+					html=html.replace('[FIX_IMAGE_BASELINE_JS]', '<script type="text/javascript">if (fixImageBaselines) fixImageBaselines("'+sw.tiImageBLSelector.text+'");</script>');
+				} else {
+					html=html.replace('[FIX_IMAGE_BASELINE_JS]', '');
+				}
+				// Les JSs
+				var jsCalls:Array=[];
+				var jsPrefix:String='<script type="text/javascript" src="';
+				var jsSuffix:String='"></script>';
+				for(i=0; i<sw.moreJSs.length; i++) {
+					if (sw.jsIsRemoteAt(i)) {
+						jsCalls.push(jsPrefix+sw.moreJSs[i].path+jsSuffix);
+					} else {
+						curFile=new File(sw.moreJSs[i].path);
+						if (!curFile.exists) continue;
+						jsCalls.push(jsPrefix+jsDir.name+'/'+curFile.name+jsSuffix);
+						toCopy.push({type:'js', f:curFile});
+					}
+				}
+				html=html.replace('[MORE_JS]', jsCalls.join('\n'));
+				//
+				// - On peut écrire le HTML
+				//
+				fs.open(curOutputDir.resolvePath('output.html'), FileMode.WRITE);
+				fs.writeUTFBytes(html);
+				fs.close();
+				//
+				// On balance ça dans le bon répertoire
+				fs.open(cssDir.resolvePath('screen.css'), FileMode.WRITE);
+				fs.writeUTFBytes(screenCSS);
+				fs.close();
+				//
+				// Gestion des fichiers à copier (ceux de Blueprint et éventuellement ceux ajoutés manuellement)
+				for (i=0; i<toCopy.length; i++) {
+					curFile=File(toCopy[i].f);
+					if (toCopy[i].type=='css') {
+						// Les CSSs doivent évetuellement être compréssés
+						var curCSSContent:String=getCSSContent(curFile);
+						fs.open(cssDir.resolvePath(curFile.name), FileMode.WRITE);
+						fs.writeUTFBytes(curCSSContent);
+						fs.close();
+					} else if (toCopy[i].type=='js') {
+						// Le JSs peuvent être copiés "as-is"
+						curFile.copyToAsync(jsDir.resolvePath(curFile.name), true);
+					}
+				}
+				//
+				// - L'image de fond
+				//
+				// Génération du PNG
+				var pngBA:ByteArray=new ByteArray();
+				var pngEnc:PNGEncoder=new PNGEncoder();
+				pngBA.writeBytes(pngEnc.encode(rootGrid.getGridBitmap(false)));
+				// Stockage au bon endroit
+				fs.open(cssDir.resolvePath('grid.png'), FileMode.WRITE);
+				fs.writeBytes(pngBA);
+				fs.close();
+				//
+				// - Le PDF
+				if (sw.cbPDF.selected) { 
+					var pdf:PDF=new PDF();
+					pdf.setDisplayMode(Display.REAL);
+					var pdfPage:Page=new Page(Orientation.PORTRAIT, Unit.POINT, new Size([sw.pageWidth, sw.pageWidth], "grid", [999, 999], [999, 999]));
+					pdf.addPage(pdfPage);
+					var ratio:Number=2.83465;
+					//pdf.lineStyle(new RGBColor(0x000000));
+					pdf.beginFill(new RGBColor(0xeeeeee));
+					var rect:Rectangle=new Rectangle();
+					rect.width=gutterWidth/ratio;
+					rect.height=sw.pageWidth/ratio;
+					rect.y=(pdfPage.height*1.83465)/ratio;
+					// Les colonnes
+					for (i=1; i<numCol; i++) {
+						rect.x=((i*colGut)-gutterWidth)/ratio;
+						pdf.drawRect(rect);
+					}
+					// Les lignes de base
+					pdf.lineStyle(new RGBColor(0x000000), 1/2.83);
+					var lineY:Number;
+					for (i=1; i<sw.pageWidth/lineHeight; i++) {
+						lineY=rect.y+(0.5+i*lineHeight)/ratio;
+						pdf.drawLine(0, lineY, pdfPage.width/ratio, lineY);
+					}
+					var pdfBA:ByteArray=pdf.save(Method.LOCAL);
+					try {
+						fs.open(curOutputDir.resolvePath('grid.pdf'), FileMode.WRITE);
+						fs.writeBytes(pdfBA);
+						fs.close();
+					} catch(e:Error) {
+						trace(e);
+					}
+				}
+				//
+				return curOutputDir.resolvePath('output.html');
+			}
+			protected function onRootHolderClick(e:MouseEvent):void {
+				if (e.target!=e.currentTarget) return;
+				GridBox.selectNone();
+			}
+			public function storeHistoryStep(tg:Object, lbl:String):void {
+				if (importing || !bokObjectHistory) return;
+				if (currentHistoryIndex<bokObjectHistory.length-1) {
+					// Si on n'est pas sur le dernier element, on vire ceux qui sont après
+					bokObjectHistory=bokObjectHistory.slice(0, currentHistoryIndex+1);
+				} else if (bokObjectHistory.length>0) {
+					var lastHistoryItem:Object=bokObjectHistory[bokObjectHistory.length-1];
+					if (lastHistoryItem.target==tg && lastHistoryItem.label==lbl) bokObjectHistory.pop();
+				}
+				bokObjectHistory.push({target:tg, label:lbl, o:getJSONExportObject()});
+				currentHistoryIndex=bokObjectHistory.length-1;
+				refreshHistoryMenuItems();
+			}
+			public function get undoMenuItem():NativeMenuItem {
+				return nMenu.nativeMenu.getItemAt(1).submenu.getItemAt(0);
+			}
+			public function get redoMenuItem():NativeMenuItem {
+				return nMenu.nativeMenu.getItemAt(1).submenu.getItemAt(1);
+			}
+			protected function refreshHistoryMenuItems():void {
+				try {
+					undoMenuItem.enabled=canUndo();
+					undoMenuItem.label=undoMenuItem.enabled ? "Undo "+bokObjectHistory[currentHistoryIndex].label : "Undo";
+					redoMenuItem.enabled=canRedo();
+					redoMenuItem.label=redoMenuItem.enabled ? "Redo "+bokObjectHistory[currentHistoryIndex+1].label : "Redo";
+				} catch (e:Error) {};
+			}
+			protected function jumpToHistoryIndex(i:int):void {
+				currentHistoryIndex=i;
+				updateFromObject(bokObjectHistory[i].o);
+				refreshHistoryMenuItems();
+			}
+			protected function canUndo():Boolean {
+				return currentHistoryIndex>0;
+			}
+			protected function handleUndo():void {
+				if (canUndo()) jumpToHistoryIndex(currentHistoryIndex-1);
+				else Alert.show("Can't undo!");
+			}
+			protected function canRedo():Boolean {
+				return currentHistoryIndex<bokObjectHistory.length-1;
+			}
+			protected function handleRedo():void {
+				if (canRedo()) jumpToHistoryIndex(currentHistoryIndex+1);
+				else Alert.show("Can't redo!");
+			}
+			protected function clearHistory():void {
+				bokObjectHistory=[];
+				bokObjectHistory.push({target:this, label:'init', o:getJSONExportObject()});
+				currentHistoryIndex=0;
+				refreshHistoryMenuItems();
+			}
+			//
+			protected function addLipsum(e:LoremIpsumEvent):void {
+				bdw.taHTML.text=bdw.taHTML.text.substring(0, bdw.taHTML.selectionBeginIndex)+e.htmlText+bdw.taHTML.text.substring(bdw.taHTML.selectionEndIndex);
+				bdw.updateBoxData();
+				bdw.lipsumOpener.selected=false;
+			}
+		]]>
+	</mx:Script>
+	<mx:VDividedBox left="0" right="0" top="0" bottom="0" verticalGap="2" id="mainHolder">
+		<mx:Canvas id="rootHolder" top="0" bottom="0" left="0" right="0"  height="100%" width="100%" click="onRootHolderClick(event);">
+			<mx:Label id="lblPageTitle" y="0" text="BOKS" styleName="appTitle" horizontalCenter="0" maxWidth="{mainHolder.width-40}" truncateToFit="true"/>
+			<mx:Label id="lblPageGrid" y="62" text="Loading..." styleName="subTitle" horizontalCenter="0"/>
+			<mx:Button id="btnGridSettings" label="Grid settings" top="10" click="sw.tabs.selectedIndex=0;openSettings();" left="10" width="110">
+				<mx:toolTip>Grid, baseline, additional styles and more...</mx:toolTip>
+			</mx:Button>
+			<mx:Button label="Export..." left="10" top="40" click="browseForExport()" width="110" toolTip="Export your project"/>
+		</mx:Canvas>
+		<local:BoxDataWindow id="bdw" bottom="0" left="0" right="0" width="100%"/>
+	</mx:VDividedBox>
+	<prompt:LoremIpsumBubble id="lipsumBubble" right="20" bottom="{bdw.height-12}" visible="{bdw.enabled &amp;&amp; bdw.taHTML.enabled &amp;&amp; bdw.lipsumOpener.selected}"/>
+</mx:WindowedApplication>

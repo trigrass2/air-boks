@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:Window xmlns:mx="http://www.adobe.com/2006/mxml"
+	creationComplete="onCC()" showStatusBar="false"
+	layout="vertical" width="550" height="300" verticalGap="0">
+	<mx:Script>
+		<![CDATA[
+			import flash.net.navigateToURL;
+			import net.tw.util.air.App;
+			protected var loc:String;
+			protected var lastScroll:Number;
+			public var app:Boks;
+			protected function onCC():void {
+				//close();
+				page.htmlLoader.textEncodingFallback="UTF-8";
+				addEventListener(KeyboardEvent.KEY_DOWN, onKey);
+			}
+			protected function onKey(e:KeyboardEvent):void {
+				if (e.keyCode==Keyboard.F5 || (e.ctrlKey && e.keyCode==Keyboard.R)) {
+					app.updateLivePreview(null, true);
+				}
+			}
+			public function refresh():void {
+				lastScroll=page.verticalScrollPosition;
+				page.location=loc;
+			}
+			public function wantAutoRefresh():Boolean {
+				return visible && cbAuto.selected;
+			}
+			protected function onDOMInit():void {
+				/*trace(lastScroll);
+				if (lastScroll) page.verticalScrollPosition=lastScroll;*/
+			}
+			public function storeLocation(s:String):void {
+				if (loc) return;
+				loc=s;
+				page.location=s;
+				title=App.getName()+' - Live Preview - '+s;
+			}
+		]]>
+	</mx:Script>
+	<mx:Canvas width="100%" height="100%">
+		<mx:HTML id="page" width="100%" height="100%" htmlDOMInitialize="onDOMInit()" />
+	</mx:Canvas>
+	<mx:ApplicationControlBar dock="true" width="100%">
+		<mx:CheckBox label="Auto-refresh" id="cbAuto"/>
+		<mx:Button label="Refresh" click="app.updateLivePreview(null, true)" enabled="{!cbAuto.selected}" toolTip="Re-generates the preview export files"/>
+		<mx:Button label="Copy preview URL" click="Clipboard.generalClipboard.setData(ClipboardFormats.TEXT_FORMAT, page.location)" toolTip="To open it in your favorite browser"/>
+		<mx:Button label="Open preview URL" click="navigateToURL(new URLRequest(page.location))" toolTip="In your default brower"/>
+	</mx:ApplicationControlBar>
+</mx:Window>

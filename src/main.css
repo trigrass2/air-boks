@@ -1,0 +1,82 @@
+Alert {
+    backgroundAlpha: 0.8;
+    backgroundColor: black;
+    borderAlpha: 0.8;
+    borderColor: black;
+    dropShadowEnabled: false;
+	buttonStyleName: alertButton;
+}
+TitleWindow {
+	borderAlpha: 1.0;
+	cornerRadius: 0;
+	borderColor: #666666;
+	drop-shadow-enabled: false;
+	titleStyleName: titleWindowTitle;
+}
+.titleWindowTitle {
+	color: #FFFFFF;
+	fontWeight: bold;
+}
+global, .alertButton {
+	color: #000000;
+	textRollOverColor: #000000;
+	textSelectedColor: #000000;
+	themeColor: #888888;
+}
+Button, .alertButton, ComboBox, ScrollBar, ApplicationControlBar, NumericStepper {
+	cornerRadius: 0;
+}
+Application {
+	backgroundColor: #ffffff;
+	backgroundGradientColors: #ffffff, #ffffff;
+}
+Window {
+	backgroundColor: #eeeeee;
+}
+GridBox {
+	background-color: #000000;
+	background-alpha: .4;
+}
+RootGridBox {
+	background-alpha: 0;
+	border-style:none;
+}
+@font-face {
+    /*src: local("Futura Light");*/
+	src: url("C:/Windows/Fonts/FuturaStd-Light.otf");
+    fontFamily: titleEmbed;
+}
+Label.appTitle {
+    fontFamily: titleEmbed;
+    fontSize: 60;
+}
+@font-face {
+    src: local("Georgia");
+    fontFamily: subTitleEmbed;
+}
+Label.subTitle {
+    fontFamily: subTitleEmbed;
+    fontSize: 12;
+	color: #999999;
+}
+LoremIpsumBubble {
+	background-image: Embed("assets/lipsumBubble.png", scaleGridTop="28", scaleGridBottom="92", scaleGridLeft="28", scaleGridRight="156");
+	background-size:"100%";  
+}
+Label.colAlert {
+	color: #B4B4B4;
+	fontSize: 12;
+	fontWeight: bold;
+	textAlign: center;
+}
+Button.mini {
+	paddingBottom: 0;
+	paddingLeft: 0;
+	paddingRight: 0;
+	paddingTop: 0;
+}
+VBox.tabContent {
+	paddingBottom: 10;
+	paddingLeft: 10;
+	paddingRight: 10;
+}

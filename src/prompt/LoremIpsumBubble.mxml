@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:VBox xmlns:mx="http://www.adobe.com/2006/mxml" creationComplete="onCC()"
+	paddingLeft="25" paddingRight="25" paddingTop="23" paddingBottom="43">
+	<mx:Script>
+		<![CDATA[
+			import com.almirun.common.events.LoremIpsumEvent;
+			import com.almirun.common.util.loremipsum.LoremIpsumGenerator;
+			public var lig:LoremIpsumGenerator;
+			protected function onCC():void {
+				lig=new LoremIpsumGenerator();
+				lig.addEventListener(LoremIpsumEvent.DATA_LOADED, onLipsumLoaded);
+			}
+			protected function onLipsumLoaded(e:LoremIpsumEvent):void {
+				btnAdd.enabled=true;
+			}
+			protected function loadLipsum():void {
+				btnAdd.enabled=false;
+				lig.startWithLoremIpsum=cbStart.selected;
+				if (paras.selected) lig.getParagraphs(lipsumAmount.value);
+				else if (words.selected) lig.getWords(lipsumAmount.value);
+				else if (bytes.selected) lig.getBytes(lipsumAmount.value);
+			}
+		]]>
+	</mx:Script>
+	<mx:HBox width="100%">
+		<mx:NumericStepper id="lipsumAmount" minimum="1" maximum="1000"/>
+		<mx:RadioButton id="paras" label="Paragraphs" selected="true" groupName="lipsumType" click="lipsumAmount.minimum=1;"/>
+		<mx:RadioButton id="words" label="Words" groupName="lipsumType" click="lipsumAmount.minimum=5;"/>
+		<mx:RadioButton id="bytes" label="Bytes" groupName="lipsumType" click="lipsumAmount.minimum=25;"/>
+	</mx:HBox>
+	<mx:HBox width="100%">
+		<mx:CheckBox id="cbStart" label="Start with Lorem Ipsum..." selected="true" width="100%"/>
+		<mx:Button id="btnAdd" label="Add dummy text" click="loadLipsum()"/>
+	</mx:HBox>
+</mx:VBox>
