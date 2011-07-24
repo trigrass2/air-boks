@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:TitleWindow xmlns:mx="http://www.adobe.com/2006/mxml"
+				layout="vertical"
+				showCloseButton="true"
+				paddingBottom="10" paddingLeft="10" paddingRight="10" paddingTop="10"
+				width="300"
+				close="PopUpManager.removePopUp(this)">
+	<mx:Script>
+		<![CDATA[
+			import mx.managers.PopUpManager;
+		]]>
+	</mx:Script>
+	<mx:Label id="lbl" width="100%"/>
+	<mx:TextInput width="100%" id="tiURL" />
+	<mx:HBox width="100%" horizontalAlign="right">
+		<mx:Button label="OK" width="30%" enabled="{tiURL.text!=''}" id="btnOK"/>
+	</mx:HBox>
+</mx:TitleWindow>

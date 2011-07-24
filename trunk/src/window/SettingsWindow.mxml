@@ -1,0 +1,576 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:Window xmlns:mx="http://www.adobe.com/2006/mxml" creationComplete="onCC()"
+	layout="vertical" title="Settings" showStatusBar="false"
+	width="350" minWidth="350" height="350" minHeight="350" maximizable="false" maxWidth="500" maxHeight="500"
+	paddingTop="10" paddingRight="10" paddingLeft="10" paddingBottom="10"
+	horizontalAlign="center">
+		<mx:Script>
+		<![CDATA[
+			import mx.events.DragEvent;
+			import mx.events.FlexNativeMenuEvent;
+			import mx.managers.DragManager;
+			import mx.managers.PopUpManager;
+			
+			import net.tw.util.air.App;
+			
+			import prompt.RemoteFilePrompt;
+			//
+			public var app:Boks;
+			//
+			protected static var minColWidth:uint=10;
+			protected static var maxColWidth:uint=300;
+			protected static var minGutterWidth:uint=0;
+			protected static var maxGutterWidth:uint=100;
+			//
+			protected var created:Boolean=false;
+			protected var exportRightAfterBrowse:Boolean=false;
+			protected var moreFileMode:String;
+			protected var moreFile:File;
+			protected var _nMenu:NativeMenu;
+			//
+			protected static const MORE_MODE_CSS:String='moreModeCSS';
+			protected static const MORE_MODE_CSS_DIR:String='moreModeCSSDir';
+			protected static const MORE_MODE_JS:String='moreModeJS';
+			//
+			protected function onCC():void {
+				//close();
+				//
+				title=App.getName()+' - '+title;
+				lblAbout.htmlText=App.getName()+' '+App.getVersion()+' - <a href="http://toki-woki.net"><u>toki-woki.net</u></a>';
+				//
+				moreFile=new File();
+				moreFile.addEventListener(Event.SELECT, onMoreSelect);
+				//
+				setMinMax();
+				updateCombo();
+				created=true;
+				//
+				dispatchEvent(new Event('nowAcceptsFiles'));
+			}
+			protected function setMinMax():void {
+				nsColWidth.minimum=minColWidth;
+				nsColWidth.maximum=maxColWidth;
+				nsGutWidth.minimum=minGutterWidth;
+				nsGutWidth.maximum=maxGutterWidth;
+			}
+			protected function onKeepWidthChange():void {
+				if (!cbKeepWidth.selected) {
+					cwColGut.dataProvider=[];
+				} else {
+					updateCombo(false);
+				}
+			}
+			protected function updateCombo(changeSelectedIndex:Boolean=true, uColGut:Boolean=true):Array {
+				if (!cbKeepWidth.selected) {
+					// On met à jour la largeur de la page
+					nsPage.value=numCol*(colWidth+gutterWidth)-gutterWidth;
+					dispatchChange();
+					return [];
+				}
+				var dp:Array=[];
+				var index:uint=changeSelectedIndex ? 0 : cwColGut.selectedIndex;
+				for (var _colWidth:uint=minColWidth; _colWidth<maxColWidth; _colWidth++) {
+					for (var _gutterWidth:uint=minGutterWidth; _gutterWidth<maxGutterWidth; _gutterWidth++) {
+						if (getWidth(numCol, _colWidth, _gutterWidth)==pageWidth) {
+							dp.push({label:_colWidth+'+'+_gutterWidth, col:_colWidth, gut:_gutterWidth});
+							if (changeSelectedIndex && index==0 && _colWidth>_gutterWidth) index=dp.length-1;
+						}
+					} 
+				}
+				cwColGut.dataProvider=dp;
+				cwColGut.selectedIndex=index;
+				if (uColGut) updateColGut();
+				return dp;
+			}
+			public function getWidth(_numCol:uint, _colWidth:uint, _gutterWidth:uint):uint {
+				return (_numCol*(_colWidth+_gutterWidth))-_gutterWidth;
+			}
+			public function get numCol():uint {
+				return nsCol.value;
+			}
+			public function get colWidth():uint {
+				return nsColWidth.value;
+			}
+			public function get gutterWidth():uint {
+				return nsGutWidth.value;
+			}
+			public function get pageWidth():uint {
+				return nsPage.value;
+			}
+			protected function dispatchChange():void {
+				if (created && ( cwColGut.selectedItem || !cbKeepWidth.selected)) dispatchEvent(new Event(Event.CHANGE));
+			}
+			protected function updateColGut():void {
+				if (cwColGut.selectedItem) {
+					nsColWidth.value=cwColGut.selectedItem.col;
+					nsGutWidth.value=cwColGut.selectedItem.gut;
+				}
+				dispatchChange();
+			}
+			protected function updateWidth(upCombo:Boolean=true):void {
+				nsPage.value=getWidth(numCol, colWidth, gutterWidth);
+				if (upCombo) updateCombo(false);
+			}
+			public function pathIsRemote(s:String):Boolean {
+				return s.indexOf('http://')==0 || s.indexOf('https://')==0;
+			}
+			public function jsIsRemoteAt(i:uint):Boolean {
+				return pathIsRemote(String(moreJSs[i].path));
+			}
+			public function cssIsRemoteAt(i:uint):Boolean {
+				return pathIsRemote(String(moreCSSs[i].path));
+			}
+			public function exportAsObject():Object {
+				var o:Object={};
+				o.numCol=numCol;
+				o.colWidth=colWidth;
+				o.gutterWidth=gutterWidth;
+				//
+				o.spaceTop=cbSpaceTop.selected;
+				o.spaceTopLineCount=nsSpaceTop.value;
+				//
+				o.customBaseline=cbBaseline.selected;
+				o.baseFontSize=nsBaseFontSize.value;
+				o.baseLineHeight=nsBaseLineHeight.value;
+				o.baselineSelectors=getBaselineSelectorArray();
+				//
+				var curMoreFile:File;
+				var i:int;
+				var rel:String;
+				o.moreFiles=[];
+				for (i=0; i<moreCSSs.length; i++) {
+					if (cssIsRemoteAt(i)) {
+						o.moreFiles.push(moreCSSs[i].path);
+					} else {
+						curMoreFile=new File(moreCSSs[i].nativePath);
+						rel=app.saveAsPath.getRelativePath(curMoreFile, true);
+						o.moreFiles.push(rel);
+					}
+				}
+				o.mergeMoreFiles=cbMergeMore.selected;
+				//
+				var isRemote:Boolean;
+				o.moreJSs=[];
+				for (i=0; i<moreJSs.length; i++) {
+					isRemote=jsIsRemoteAt(i);
+					if (isRemote) {
+						o.moreJSs.push(moreJSs[i].path);
+					} else {
+						curMoreFile=new File(moreJSs[i].path);
+						rel=app.saveAsPath.getRelativePath(curMoreFile, true);
+						o.moreJSs.push(rel);
+					}
+				}
+				//
+				o.fixImageBL=cbImageBL.selected;
+				//o.fixImageBLJS=cbMooTools.selected ? 0 : 1;
+				o.imgBLSelector=tiImageBLSelector.text;
+				//
+				o.pageTitle=tiTitle.text;
+				o.pageLang=tiLang.text;
+				o.compressCSS=cbCompress.selected;
+				o.showGrid=cbGrid.selected;
+				o.showBaseline=cbShowBL.selected;
+				o.generatePDF=cbPDF.selected;
+				o.commentClosure=cbCommentClosure.selected;
+				o.doctypeIndex=comboDoctype.selectedIndex;
+				return o;
+			}
+			protected function getBaselineSelectorArray():Object {
+				var ar:Array=[];
+				for (var i:uint=0; i<baselineSelectors.length; i++) {
+					var o:Object=baselineSelectors[i];
+					ar.push({selector:o.selector, ratio:o.ratio, lines:o.lines});
+				}
+				return ar;
+			}
+			protected function updateBaselineSelectors(o:Object):void {
+				baselineSelectors=new ArrayCollection();
+				for each(var curSelector:Object in o) {
+					baselineSelectors.addItem(curSelector);
+				}
+			}
+			public function updateFromObject(o:Object):void {
+				cbKeepWidth.selected=true;
+				//cwColGut.dataProvider=[];
+				var i:uint;
+				//
+				setMinMax();
+				nsCol.value=o.numCol;
+				nsColWidth.value=o.colWidth;
+				nsGutWidth.value=o.gutterWidth;
+				updateWidth(false);
+				//
+				var ar:Array=updateCombo(false, false);
+				for(i=0; i<ar.length; i++) {
+					if (ar[i].col==o.colWidth && ar[i].gut==o.gutterWidth) cwColGut.selectedIndex=i;
+				}
+				//
+				cbSpaceTop.selected=o.spaceTop;
+				nsSpaceTop.value=o.spaceTopLineCount ? o.spaceTopLineCount : 1;
+				//
+				cbBaseline.selected=o.customBaseline;
+				nsBaseFontSize.value=o.baseFontSize;
+				nsBaseLineHeight.value=o.baseLineHeight;
+				updateBaselineSelectors(o.baselineSelectors);
+				//
+				var curMoreFile:File;
+				moreCSSs.removeAll();
+				if (o.moreFiles) {
+					for (i=0; i<o.moreFiles.length; i++) {
+						if (pathIsRemote(o.moreFiles[i])) {
+							addRemoteCSS(o.moreFiles[i]);
+						} else {
+							curMoreFile=new File(app.openFile.resolvePath(o.moreFiles[i]).nativePath);
+							if (!curMoreFile.exists) continue;
+							addMoreCSSFile(curMoreFile);
+						}
+					}
+				}
+				cbMergeMore.selected=o.mergeMoreFiles;
+				//
+				moreJSs.removeAll();
+				if (o.moreJSs) {
+					var isRemote:Boolean;
+					for (i=0; i<o.moreJSs.length; i++) {
+						isRemote=pathIsRemote(o.moreJSs[i]);
+						if (isRemote) {
+							addMoreJSURL(o.moreJSs[i]);
+						} else {
+							curMoreFile=new File(app.openFile.resolvePath(o.moreJSs[i]).nativePath);
+							if (!curMoreFile.exists) continue;
+							addMoreJSURL(curMoreFile.nativePath);
+						}
+					}
+				}
+				cbImageBL.selected=o.fixImageBL;
+				// On gère l'ancienne façon de gérer les FIBLs, en ajoutant les URLs nécessaires au JavaScript
+				if (o.fixImageBL) {
+					if (o.fixImageBLJS==0) {
+						addMoreJSURL(getFIBLURL('mt-lib'));
+						addMoreJSURL(getFIBLURL('mt-fix'));
+					} else if (o.fixImageBLJS==1) {
+						addMoreJSURL(getFIBLURL('jq-lib'));
+						addMoreJSURL(getFIBLURL('jq-fix'));
+					}
+				}
+				//cbMooTools.selected=!o.fixImageBLJS || o.fixImageBLJS==0;
+				//cbJQuery.selected=o.fixImageBLJS==1;
+				tiImageBLSelector.text=o.imgBLSelector;
+				//
+				tiTitle.text=o.pageTitle;
+				tiLang.text=o.pageLang;
+				cbCompress.selected=o.compressCSS;
+				cbGrid.selected=o.showGrid;
+				cbShowBL.selected=o.showBaseline;
+				cbPDF.selected=o.generatePDF;
+				cbCommentClosure.selected=o.commentClosure;
+				comboDoctype.selectedIndex=o.doctypeIndex;
+				//
+				dispatchChange();
+			}
+			protected function getFIBLURL(fibl:String):String {
+				return moreJSMenuData..menuitem.(attribute('fibl')==fibl)[0].@url;
+			}
+			protected function onSelectorEdit(e:MouseEvent):void {
+				if (e.target==btnAddSelector) {
+					baselineSelectors.addItem({selector:'.selector', ratio:1, lines:1});
+					dgBaseline.selectedIndex=baselineSelectors.length-1;
+					dgBaseline.verticalScrollPosition=dgBaseline.maxVerticalScrollPosition;
+				} else if (e.target==btnRemoveSelector && dgBaseline.selectedItem) {
+					baselineSelectors.removeItemAt(dgBaseline.selectedIndex);
+				}
+			}
+			protected function onAddCSS():void {
+				moreFileMode=MORE_MODE_CSS;
+				moreFile.browseForOpen("Choose a CSS file", [new FileFilter("CSS file", "*.css")]);
+			}
+			protected function onAddFolder():void {
+				moreFileMode=MORE_MODE_CSS_DIR;
+				moreFile.browseForDirectory("Choose a directory");
+			}
+			protected function onAddRemoteCSS():void {
+				showRemoteFilePrompt("Remote CSS file", "Paste the URL to your remote CSS file");
+			}
+			protected function onMoreSelect(e:Event):void {
+				var i:int;
+				if (moreFileMode==MORE_MODE_CSS || moreFileMode==MORE_MODE_CSS_DIR) {
+					addMoreCSSFile(moreFile);
+				} else if (moreFileMode==MORE_MODE_JS) {
+					addMoreJSURL(moreFile.nativePath);
+				}
+			}
+			protected function onDeleteMore():void {
+				if (dgMoreCSS.selectedItem) moreCSSs.removeItemAt(dgMoreCSS.selectedIndex);
+			}
+			protected function getReversedURL(s:String, sep:String):String {
+				return s.split(sep).reverse().join(sep);
+			}
+			protected function getReversedPath(f:File):String {
+				return getReversedURL(f.nativePath, File.separator);
+			}
+			protected function addMoreCSSFile(f:File):void {
+				// On vérifie que ce fichier n'a pas déjà été ajouté
+				for (var i:int=0; i<moreCSSs.length; i++) if (moreCSSs[i].nativePath==f.nativePath) return;
+				moreCSSs.addItem({nativePath:f.nativePath, reversedPath:getReversedPath(f)});
+			}
+			protected function addMoreJSURL(url:String):void {
+				var isRemote:Boolean=pathIsRemote(url);
+				// On vérifie que ce fichier n'a pas déjà été ajouté
+				for (var i:int=0; i<moreJSs.length; i++) if (moreJSs[i].path==url) return;
+				// On ajoute
+				moreJSs.addItem({path:url, reversedURL:getReversedURL(isRemote ? url.substr(7) : url, isRemote ? '/' : File.separator)});
+			}
+			protected function showMoreJSMenu():void {
+				var p:Point=new Point(btnAddJS.x, btnAddJS.y+btnAddJS.height-1);
+				p=btnAddJS.localToGlobal(p);
+				moreJSMenu.display(stage, p.x, p.y)
+			}
+			protected var remoteFilePrompt:RemoteFilePrompt;
+			protected function showRemoteFilePrompt(title:String, lbl:String):void {
+				if (!remoteFilePrompt) remoteFilePrompt=new RemoteFilePrompt();
+				PopUpManager.addPopUp(remoteFilePrompt, this, true);
+				PopUpManager.centerPopUp(remoteFilePrompt);
+				remoteFilePrompt.title=title;
+				remoteFilePrompt.lbl.text=lbl;
+				remoteFilePrompt.tiURL.text='';
+				remoteFilePrompt.tiURL.setFocus();
+				remoteFilePrompt.btnOK.addEventListener(MouseEvent.CLICK, onRemoteFile);
+			}
+			protected function onMoreJSMenu(e:FlexNativeMenuEvent):void {
+				var it:XML=XML(e.item);
+				if (String(it.@url)!='') {
+					addMoreJSURL(String(it.@url));
+					return;
+				}
+				var mid:String=String(it.@mid);
+				if (mid!='') {
+					switch (mid) {
+						case 'miCustom':
+							/*if (!remoteFilePrompt) remoteFilePrompt=new RemoteFilePrompt();
+							PopUpManager.addPopUp(remoteFilePrompt, this, true);
+							PopUpManager.centerPopUp(remoteFilePrompt);
+							remoteFilePrompt.tiURL.text='';
+							remoteFilePrompt.tiURL.setFocus();
+							remoteFilePrompt.btnOK.addEventListener(MouseEvent.CLICK, onCustomJS);*/
+							showRemoteFilePrompt("JavaScript Custom URL", "Paste the URL to your custom JavaScript file");
+							break;
+						case 'miLocal':
+							moreFileMode=MORE_MODE_JS;
+							moreFile.browseForOpen("Choose a JS file", [new FileFilter("JS file", "*.js")]);
+							break;
+					}
+				}
+			}
+			protected function addRemoteCSS(u:String):void {
+				moreCSSs.addItem({path:u, reversedPath:getReversedURL(u, '/')});
+			}
+			protected function onRemoteFile(e:MouseEvent):void {
+				if (tabs.selectedChild==jsTab) {
+					addMoreJSURL(remoteFilePrompt.tiURL.text);
+				} else {
+					addRemoteCSS(remoteFilePrompt.tiURL.text);
+				}
+				PopUpManager.removePopUp(remoteFilePrompt);
+			}
+		]]>
+	</mx:Script>
+	<mx:ArrayCollection id="baselineSelectors">
+		<mx:source>
+			<mx:Array>
+				<mx:Object selector="h1" ratio="1.8" lines="2" />
+				<mx:Object selector="h2" ratio="1.6" />
+				<mx:Object selector="h3" ratio="1.4" />
+				<mx:Object selector="h4" ratio="1.2" />
+				<mx:Object selector=".small" ratio="0.8" />
+			</mx:Array>
+		</mx:source>
+	</mx:ArrayCollection>
+	<mx:ArrayCollection id="moreCSSs" />
+	<mx:ArrayCollection id="moreJSs" />
+	<mx:FlexNativeMenu id="moreJSMenu"
+					   dataProvider="{moreJSMenuData}"
+					   labelField="@label"
+					   showRoot="false"
+					   itemClick="onMoreJSMenu(event)" />
+	<mx:XML id="moreJSMenuData" format="e4x">
+		<root>
+			<menuitem label="Local File..." mid="miLocal" />
+			<menuitem label="Remote File">
+				<menuitem label="Custom URL..." mid="miCustom" />
+				<menuitem label="Google CDN">
+					<menuitem label="jQuery" url="http://ajax.googleapis.com/ajax/libs/jquery/1.4.2/jquery.min.js" fibl="jq-lib" />
+					<menuitem label="jQuery UI" url="http://ajax.googleapis.com/ajax/libs/jqueryui/1.7.2/jquery-ui.min.js" />
+					<menuitem label="Prototype" url="http://ajax.googleapis.com/ajax/libs/prototype/1.6.1.0/prototype.js" />
+					<menuitem label="script.aculo.us" url="http://ajax.googleapis.com/ajax/libs/scriptaculous/1.8.3/scriptaculous.js" />
+					<menuitem label="MooTools" url="http://ajax.googleapis.com/ajax/libs/mootools/1.2.4/mootools-yui-compressed.js" fibl="mt-lib" />
+					<menuitem label="Dojo" url="http://ajax.googleapis.com/ajax/libs/dojo/1.4.1/dojo/dojo.xd.js" />
+					<menuitem label="SWFObject" url="http://ajax.googleapis.com/ajax/libs/swfobject/2.2/swfobject.js" />
+					<menuitem label="Yahoo! User Interface Library (YUI)" url="http://ajax.googleapis.com/ajax/libs/yui/2.8.0r4/build/yuiloader/yuiloader-min.js" />
+				</menuitem>
+				<menuitem label="Image Baseline Fixer">
+					<menuitem label="for MooTools" url="http://js-fix-image-baseline.googlecode.com/svn/trunk/fib-mootools.js" fibl="mt-fix" />
+					<menuitem label="for jQuery" url="http://js-fix-image-baseline.googlecode.com/svn/trunk/fib-jquery.js" fibl="jq-fix" />
+				</menuitem>
+			</menuitem>
+		</root>
+	</mx:XML>
+	<mx:TabNavigator width="100%" height="100%" creationPolicy="all" id="tabs" horizontalGap="1" horizontalAlign="center">
+		<mx:VBox label="Grid" width="100%" height="100%" styleName="tabContent" id="gridTab">
+			<mx:FormItem label="Page width" labelWidth="130" width="100%">
+				<mx:NumericStepper width="100%" minimum="200" maximum="2000" value="950" id="nsPage" change="updateCombo()" enabled="{cbKeepWidth.selected}"/>
+			</mx:FormItem>
+			<mx:CheckBox id="cbKeepWidth" label="Maintain page width" selected="true" change="onKeepWidthChange()" labelPlacement="left" width="100%" textAlign="right" paddingRight="6"/>
+			<mx:FormItem label="Number of columns" labelWidth="130" width="100%">
+				<mx:HBox width="100%">
+					<mx:Label text="?" width="10"
+							  toolTip="Note: the minimum amount of columns depends on the boxes at the root of your grid."
+							  styleName="colAlert"/>
+					<mx:NumericStepper width="100%" id="nsCol" minimum="2" maximum="150" value="24" change="updateCombo()"/>
+				</mx:HBox>
+			</mx:FormItem>
+			<mx:FormItem label="Column+gutter widths" labelWidth="130" width="100%">
+				<mx:List width="100%" id="cwColGut" change="updateColGut()" rowCount="3" enabled="{cbKeepWidth.selected}"/>
+			</mx:FormItem>
+			<mx:FormItem label="Column width" labelWidth="130" width="100%">
+				<mx:NumericStepper width="100%" id="nsColWidth" change="updateWidth()" enabled="{!cbKeepWidth.selected}"/>
+			</mx:FormItem>
+			<mx:FormItem label="Gutter width" labelWidth="130" width="100%">
+				<mx:NumericStepper width="100%" id="nsGutWidth" change="updateWidth()" enabled="{!cbKeepWidth.selected}"/>
+			</mx:FormItem>
+		</mx:VBox>
+		<mx:VBox label="Baseline" width="100%" height="100%" styleName="tabContent">
+			<mx:CheckBox id="cbSpaceTop" label="Add empty space to page's top" toolTip="Sets a padding-top to the main container" />
+			<mx:FormItem label="Number of empty lines" labelWidth="160" enabled="{cbSpaceTop.selected}" width="100%">
+				<mx:NumericStepper width="100%" value="1" minimum="1" maximum="100" id="nsSpaceTop" />
+			</mx:FormItem>
+			<mx:CheckBox label="Use custom baseline rhythm" id="cbBaseline" width="100%" toolTip="This will ignore Blueprint's defaults"/>
+			<mx:VBox width="100%" enabled="{cbBaseline.selected}" height="100%">
+				<mx:FormItem label="Base font size (px)" width="100%" labelWidth="160">
+						<mx:NumericStepper width="100%" value="12" minimum="1" maximum="100" id="nsBaseFontSize"/>
+				</mx:FormItem>
+				<mx:FormItem label="Base line height (px)" width="100%" labelWidth="160">
+						<mx:NumericStepper width="100%" minimum="1" maximum="100" value="18" id="nsBaseLineHeight"/>
+				</mx:FormItem>
+				<mx:HBox width="100%" verticalAlign="middle">
+					<mx:Label text="Ratios" fontWeight="bold"/>
+					<mx:HRule width="100%"/>
+				</mx:HBox>
+				<mx:HBox width="100%" height="100%" horizontalGap="6">
+					<mx:DataGrid width="100%" dataProvider="{baselineSelectors}"
+						dragEnabled="true" dropEnabled="true" dragMoveEnabled="true"
+						editable="true"
+						sortableColumns="false"
+						draggableColumns="false" id="dgBaseline" height="100%">
+							<mx:columns>
+									<mx:DataGridColumn headerText="Selector" dataField="selector" />
+									<mx:DataGridColumn headerText="Size" dataField="ratio" editorDataField="value">
+										<mx:itemEditor>
+											<mx:Component>
+												<mx:NumericStepper minimum="0.2" maximum="10" stepSize="0.1" />
+											</mx:Component>
+										</mx:itemEditor>
+									</mx:DataGridColumn>
+									<mx:DataGridColumn headerText="Lines" dataField="lines" editorDataField="value">
+										<mx:itemEditor>
+											<mx:Component>
+												<mx:NumericStepper minimum="1" maximum="10" />
+											</mx:Component>
+										</mx:itemEditor>
+									</mx:DataGridColumn>
+							</mx:columns>
+					</mx:DataGrid>
+					<mx:VBox horizontalAlign="right" click="onSelectorEdit(event)">
+						<mx:Button id="btnAddSelector" label="+" width="23" toolTip="Add selector" height="23" styleName="mini"/>
+						<mx:Button id="btnRemoveSelector" label="-" 
+								   styleName="mini"
+								   width="23" height="23"
+								   toolTip="Remove selector"
+								   enabled="{dgBaseline.selectedItem}"/>
+					</mx:VBox>
+				</mx:HBox>
+			</mx:VBox>
+		</mx:VBox>
+		<mx:VBox label="+CSS" width="100%" height="100%" styleName="tabContent" id="cssTab">
+			<mx:Label text="Add your own stylesheets and assets" />
+			<mx:DataGrid id="dgMoreCSS" width="100%" height="100%" dataProvider="{moreCSSs}"
+				sortableColumns="false" dragEnabled="true"
+				dragMoveEnabled="true" resizableColumns="false" draggableColumns="false" dropEnabled="true">
+				<mx:columns>
+					<mx:DataGridColumn headerText="Path (reversed)" dataField="reversedPath" />
+				</mx:columns>
+			</mx:DataGrid>
+			<mx:HBox width="100%" horizontalGap="-1">
+				<mx:Button label="+CSS" click="onAddCSS()" toolTip="CSS files will be copied in the css folder, or merged in the screen.css"/>
+				<mx:Button label="+Asset Folder" click="onAddFolder()" toolTip="Folders will be copied as is in the css folder"/>
+				<mx:Button label="+Remote CSS" click="onAddRemoteCSS()" toolTip="Use remote CSS file"/>
+				<mx:Button label="-" click="onDeleteMore()" toolTip="Remove selected item" enabled="{dgMoreCSS.selectedItem}"/>
+			</mx:HBox>
+			<mx:CheckBox label="Merge local CSS files within screen.css" selected="true" id="cbMergeMore" toolTip="Less files but harder to maintain"/>
+		</mx:VBox>
+		<mx:VBox label="+JS" width="100%" height="100%" styleName="tabContent" id="jsTab">
+			<mx:Label text="Add JavaScript files to your page" />
+			<mx:HBox width="100%" height="100%">
+				<mx:DataGrid
+						width="100%" height="100%"
+						id="dgMoreJS"
+						dataProvider="{moreJSs}"
+						sortableColumns="false" draggableColumns="false"
+						dragEnabled="true" dragMoveEnabled="true" dropEnabled="true">
+					<mx:columns>
+						<mx:DataGridColumn headerText="URL or Path (reversed)" dataField="reversedURL" />
+					</mx:columns>
+				</mx:DataGrid>
+				<mx:VBox>
+					<mx:Button label="+" styleName="mini" width="23" height="23" click="showMoreJSMenu()" id="btnAddJS" toolTip="Add local or remote JavaScript files" />
+					<mx:Button label="-" enabled="{dgMoreJS.selectedItem}"
+							   styleName="mini"
+							   width="23" height="23"
+							   click="moreJSs.removeItemAt(dgMoreJS.selectedIndex)"/>
+				</mx:VBox>
+			</mx:HBox>
+			<mx:CheckBox label="Add JS call to fix image baselines" id="cbImageBL"/>
+			<mx:VBox width="100%" enabled="{cbImageBL.selected}">
+				<!--<mx:HBox width="100%">
+				<mx:RadioButton label="MooTools version" selected="true" groupName="jsVersion" id="cbMooTools"/>
+				<mx:RadioButton label="jQuery version" groupName="jsVersion" id="cbJQuery"/>
+				</mx:HBox>-->
+				<mx:Label text="Make sure to add one of the Image Baseline Fixers!" />
+				<mx:FormItem label="Image selector" width="100%">
+					<mx:TextInput width="100%" text="img" id="tiImageBLSelector"/>
+				</mx:FormItem>
+			</mx:VBox>
+		</mx:VBox>
+		<mx:VBox label="Export" width="100%" height="100%" styleName="tabContent" verticalGap="4" id="exportTab">
+			<mx:FormItem label="Page title" width="100%" labelWidth="80">
+				<mx:TextInput id="tiTitle" text="Untitled" change="dispatchChange()" width="100%"/>
+			</mx:FormItem>
+			<mx:FormItem label="Language" width="100%" labelWidth="80">
+				<mx:TextInput text="en" id="tiLang" width="100%"/>
+			</mx:FormItem>
+			<mx:FormItem label="DOCTYPE" width="100%" labelWidth="80">
+				<mx:ComboBox id="comboDoctype" width="100%">
+					<mx:dataProvider>
+						<mx:Array>
+							<mx:String>XHTML 1.0 Strict</mx:String>
+							<mx:String>XHTML 1.0 Transitional</mx:String>
+							<mx:String>HTML 4.01 Strict</mx:String>
+							<mx:String>HTML 4.01 Transitional</mx:String>
+							<mx:String>HTML 5</mx:String>
+						</mx:Array>
+					</mx:dataProvider>
+				</mx:ComboBox>
+			</mx:FormItem>
+			<mx:CheckBox label="Compress CSS" id="cbCompress" selected="true" toolTip="Lighter but harder to maintain"/>
+			<mx:CheckBox label="Show grid" id="cbGrid" selected="true" toolTip="Adds a &quot;showgrid&quot; class to the main container, great for checking alignments"/>
+			<mx:CheckBox label="Show baseline on grid.png" selected="true" id="cbShowBL"/>
+			<mx:CheckBox label="Add closing comments to tags with IDs" id="cbCommentClosure" toolTip="For better HTML source readability" />
+			<mx:HRule width="100%"/>
+			<mx:CheckBox label="Generate grid.pdf" id="cbPDF" toolTip="To open in Illustrator or Photoshop as guides"/>
+		</mx:VBox>
+	</mx:TabNavigator>
+	<mx:HBox width="100%" verticalAlign="bottom">
+		<mx:Label id="lblAbout" text="About" width="100%" styleName="subTitle" selectable="true"/>
+		<mx:Button label="OK" width="100" click="close()"/>
+	</mx:HBox>
+</mx:Window>
